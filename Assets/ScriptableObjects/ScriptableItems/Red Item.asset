@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a067d7e09d32614a808f1ccd43baf2d, type: 3}
+  m_Name: Red Item
+  m_EditorClassIdentifier: 
+  itemName: Red Item
+  prefab: {fileID: 7100500925334622699, guid: 7e8e41f092f33b24e9c8a5c98fe517b1, type: 3}
+  explosionEffect: {fileID: 2325008516686080264, guid: 2fb51a1cf7c2ceb4786801f6f73d3c71, type: 3}

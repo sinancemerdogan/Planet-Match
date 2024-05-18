@@ -1,0 +1,189 @@
+#define UNITY_EDITOR_WIN //**--
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+using System;
+using UnityEditorInternal;
+using System.Linq;
+
+
+
+namespace Meryel.UnityCodeAssist.Editor.Preferences
+{
+
+    public class PreferenceMonitor 
+    {
+        private static string pathToPrefs = String.Empty;
+        private static string platformPathPrefix = @"~";
+
+        private string[] userDef;
+        private string[] unityDef;
+        private bool showSystemGroup = false;
+
+        private SerializedObject serializedObject;
+        private ReorderableList userDefList;
+        private ReorderableList unityDefList;
+
+        private SerializedProperty[] userDefListCache = new SerializedProperty[0];
+
+        private PreferenceEntryHolder prefEntryHolder;
+
+        private Vector2 scrollPos;
+        private float relSpliterPos;
+        private bool moveSplitterPos = false;
+
+        private PreferanceStorageAccessor entryAccessor;
+
+
+        private bool updateView = false;
+        private bool monitoring = false;
+        private bool showLoadingIndicatorOverlay = false;
+
+
+#if UNITY_EDITOR_LINUX
+        private readonly char[] invalidFilenameChars = { '"', '\\', '*', '/', ':', '<', '>', '?', '|' };
+#elif UNITY_EDITOR_OSX
+        private readonly char[] invalidFilenameChars = { '$', '%', '&', '\\', '/', ':', '<', '>', '|', '~' };
+#endif
+
+
+        private void OnEnable()
+        {
+#if UNITY_EDITOR_WIN
+            pathToPrefs = @"SOFTWARE\Unity\UnityEditor\" + PlayerSettings.companyName + @"\" + PlayerSettings.productName;
+            platformPathPrefix = @"<CurrentUser>";
+            entryAccessor = new WindowsPrefStorage(pathToPrefs);
+#elif UNITY_EDITOR_OSX
+            pathToPrefs = @"Library/Preferences/unity." + MakeValidFileName(PlayerSettings.companyName) + "." + MakeValidFileName(PlayerSettings.productName) + ".plist";
+            entryAccessor = new MacPrefStorage(pathToPrefs);
+            //entryAccessor.StartLoadingDelegate = () => { showLoadingIndicatorOverlay = true; };
+            //entryAccessor.StopLoadingDelegate = () => { showLoadingIndicatorOverlay = false; };
+#elif UNITY_EDITOR_LINUX
+            pathToPrefs = @".config/unity3d/" + MakeValidFileName(PlayerSettings.companyName) + "/" + MakeValidFileName(PlayerSettings.productName) + "/prefs";
+            entryAccessor = new LinuxPrefStorage(pathToPrefs);
+#endif
+            entryAccessor.PrefEntryChangedDelegate = () => { updateView = true; };
+            entryAccessor.StartMonitoring();
+
+            // Fix for serialisation issue of static fields
+            if (userDefList == null)
+            {
+                InitReorderedList();
+                PrepareData();
+            }
+        }
+
+        // Handel view updates for monitored changes
+        // Necessary to avoid main thread access issue
+        private void Update()
+        {
+
+            if (updateView)
+            {
+                updateView = false;
+                PrepareData();
+                //Repaint();
+            }
+        }
+
+        private void OnDisable()
+        {
+            entryAccessor.StopMonitoring();
+        }
+
+        private void InitReorderedList()
+        {
+            if (prefEntryHolder == null)
+            {
+                var tmp = Resources.FindObjectsOfTypeAll<PreferenceEntryHolder>();
+                if (tmp.Length > 0)
+                {
+                    prefEntryHolder = tmp[0];
+                }
+                else
+                {
+                    prefEntryHolder = ScriptableObject.CreateInstance<PreferenceEntryHolder>();
+                }
+            }
+
+            if (serializedObject == null)
+            {
+                serializedObject = new SerializedObject(prefEntryHolder);
+            }
+
+            userDefList = new ReorderableList(serializedObject, serializedObject.FindProperty("userDefList"), false, true, true, true);
+            unityDefList = new ReorderableList(serializedObject, serializedObject.FindProperty("unityDefList"), false, true, false, false);
+
+        }
+
+
+        private void PrepareData(bool reloadKeys = true)
+        {
+            prefEntryHolder.ClearLists();
+
+            LoadKeys(out userDef, out unityDef, reloadKeys);
+
+            //CreatePrefEntries(userDef, ref prefEntryHolder.userDefList);
+            //CreatePrefEntries(unityDef, ref prefEntryHolder.unityDefList);
+
+            // Clear cache
+            userDefListCache = new SerializedProperty[prefEntryHolder.userDefList.Count];
+        }
+
+        private void LoadKeys(out string[] userDef, out string[] unityDef, bool reloadKeys)
+        {
+            string[] keys = entryAccessor.GetKeys(reloadKeys);
+
+            //keys.ToList().ForEach( e => { Debug.Log(e); } );
+
+            // Seperate keys int unity defined and user defined
+            Dictionary<bool, List<string>> groups = keys
+                .GroupBy((key) => key.StartsWith("unity.") || key.StartsWith("UnityGraphicsQuality"))
+                .ToDictionary((g) => g.Key, (g) => g.ToList());
+
+            unityDef = (groups.ContainsKey(true)) ? groups[true].ToArray() : new string[0];
+            userDef = (groups.ContainsKey(false)) ? groups[false].ToArray() : new string[0];
+        }
+
+        private SerializedProperty GetUserDefListElementAtIndex(int index, SerializedProperty ListProperty)
+        {
+            UnityEngine.Assertions.Assert.IsTrue(ListProperty.isArray, "Given 'ListProperts' is not type of array");
+
+            if (userDefListCache[index] == null)
+            {
+                userDefListCache[index] = ListProperty.GetArrayElementAtIndex(index);
+            }
+            return userDefListCache[index];
+        }
+
+#if (UNITY_EDITOR_LINUX || UNITY_EDITOR_OSX)
+        private string MakeValidFileName(string unsafeFileName)
+        {
+            string normalizedFileName = unsafeFileName.Trim().Normalize(NormalizationForm.FormD);
+            StringBuilder stringBuilder = new StringBuilder();
+
+            // We need to use a TextElementEmumerator in order to support UTF16 characters that may take up more than one char(case 1169358)
+            TextElementEnumerator charEnum = StringInfo.GetTextElementEnumerator(normalizedFileName);
+            while (charEnum.MoveNext())
+            {
+                string c = charEnum.GetTextElement();
+                if (c.Length == 1 && invalidFilenameChars.Contains(c[0]))
+                {
+                    stringBuilder.Append('_');
+                    continue;
+                }
+                UnicodeCategory unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(c, 0);
+                if (unicodeCategory != UnicodeCategory.NonSpacingMark)
+                    stringBuilder.Append(c);
+            }
+            return stringBuilder.ToString().Normalize(NormalizationForm.FormC);
+        }
+#endif
+
+    }
+
+
+}

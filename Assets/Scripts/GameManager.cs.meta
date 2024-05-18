@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: c3dfdfd6361783840b50dae89d4a4059
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - gridElementPrefab: {fileID: 7437586803175316780, guid: 552ad992c2f5965408f2a247790619a8, type: 3}
+  - levelsSO: {fileID: 11400000, guid: 9c6c96f313c699441868a07bd518421d, type: 2}
+  - tickItem: {fileID: 11400000, guid: 3a41da91cf02dd34fbecf5a61f316c0a, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
